@@ -15,7 +15,7 @@ def_answer = {
 
 @app.route(rule='/health', methods=['GET'])
 def health():
-    return 'OK',200
+    return 'OK', 200
 
 
 @app.route(rule='/log', methods=['POST'])
