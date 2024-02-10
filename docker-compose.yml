@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  log_api:
+    container_name: log_api
+    restart: unless-stopped
+    build: 
+      context: ./
+      args:
+        WAITRESS_PORT: "50005"
+    # FOR TESTING ONLY!!!
+    ports:
+      - "50005:50005"
+    networks:
+      - log_net
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - /home/houseman/Documents/git/Projektarbeit/data/log_data:/home/api/log_data
+
+
+networks:
+  log_net:
+    name: log_net
+    driver: bridge
