@@ -26,10 +26,7 @@ def log():
 
     resp_dict = def_answer.copy()
 
-    port = request.form.get('port', 0)
-    ip = request.form.get('ip', '127.0.1.1')
-
-    req_keys = ['eventid', 'content']
+    req_keys = ['eventid', 'content', 'ip', 'src_port', 'dst_port']
     missing_keys = []
     
     for key in req_keys:
@@ -49,7 +46,7 @@ def log():
         resp_dict['message'] = f"Error during jsonification of content, content has to be a dict!: {e}"
         return resp_dict, 400
     try:
-        logger.log(eventid=request.form['eventid'], content=content_dict, ip=ip, port=port)
+        logger.log(eventid=request.form.get('eventid'), content=content_dict, ip=request.form.get("ip"), src_port=request.form.get("src_port"), dst_port=request.form.get("dst_port"))
     except Exception as e:
         resp_dict['status'] = 'error'
         resp_dict['message'] = f"Error: {e}"
@@ -68,6 +65,7 @@ def info():
 
     return handle_logging(level='info', request=request)
 
+
 @app.route(rule="/warn", methods=["POST"])
 def warn():
     """
@@ -75,6 +73,7 @@ def warn():
     """
 
     return handle_logging(level='warn', request=request)
+
 
 @app.route(rule="/error", methods=["POST"])
 def error():
@@ -98,27 +97,27 @@ def handle_logging(level:str, request:request) -> tuple[dict, int]:
     
     resp_dict = def_answer.copy()
 
-    port = request.form.get('port', 0)
-    ip = request.form.get('ip', '127.0.1.1')
-    method = request.form.get('method', 'generic')
-
-    if 'message' not in request.form.keys():
-        resp_dict['status'] = 'error'
-        resp_dict['message'] = f"Missing key: message"
-        return resp_dict, 400
-    else:
-        message = request.form['message']
+    req_keys = ['message', 'method', 'ip', 'src_port', 'dst_port']
+    missing_keys = []
     
+    for key in req_keys:
+        if key not in request.form.keys():
+            missing_keys.append(key)
+    
+    if len(missing_keys) > 0:
+        resp_dict['status'] = 'error'
+        resp_dict['message'] = f"Missing keys:"
+        resp_dict['data'] = missing_keys
+        return resp_dict, 400
     try:
         if level == 'info':
-            logger.info(message=message, method=method, ip=ip, port=port)
+            logger.info(message=request.form.get("message"), method=request.form.get("method"), ip=request.form.get("ip"), src_port=request.form.get("src_port"), dst_port=request.form.get("dst_port"))
         elif level == 'warn':
-            logger.warn(message=message, method=method, ip=ip, port=port)
+            logger.warn(message=request.form.get("message"), method=request.form.get("method"), ip=request.form.get("ip"), src_port=request.form.get("src_port"), dst_port=request.form.get("dst_port"))
         elif level == 'error':
-            logger.error(message=message, method=method, ip=ip, port=port)
+            logger.error(message=request.form.get("message"), method=request.form.get("method"), ip=request.form.get("ip"), src_port=request.form.get("src_port"), dst_port=request.form.get("dst_port"))
         else:
-            raise ValueError(f"level must be one of ['info', 'warn', 'error']")
-    
+            raise ValueError(f"Invalid level: {level}")
     except Exception as e:
         resp_dict['status'] = 'error'
         resp_dict['message'] = f"Error: {e}"
