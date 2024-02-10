@@ -21,17 +21,20 @@ class JsonLogger:
         self.dst_ip = get_own_ip(config=config)
 
 
-    def log(self, eventid:str, content:dict, ip:Optional[str] = '127.0.1.1', port:Optional[int] = 0):
+
+    def log(self, eventid:str, content:dict, ip:str, src_port:int, dst_port:int):
         """
         This method is for logging an event.
         :param eventid: The id of the event should look like `sofah.honeypot.static_endpoint`
         :type eventid: str
         :param content: a dictionary containing the content
         :type content: dict
-        :param ip: optional ip-adress of the source, defaults to `'127.0.1.1'`
-        :type ip: Optional[str]
-        :param port: OPtional source port, defaults to `0`
-        :type port: Optional[int]
+        :param ip: ip-adress of the source
+        :type ip: str
+        :param src_port: source port
+        :type src_port: int
+        :param dst_port: destination port
+        :type dst_port: int
         """
         
         try:
@@ -55,61 +58,67 @@ class JsonLogger:
         content['session'] = key
         content['timestamp'] = self.get_formatted_timestamp()
         content['eventid'] = eventid
-        content['src_port'] = port
+        content['src_port'] = src_port
         content['dst_ip'] = self.dst_ip
-        content['dst_port'] = 8080
+        content['dst_port'] = dst_port
 
         filename = "sofah_log"
         
         save_as_json(f"{self.path}/{filename}.json", content=content, mode='a', newline=True)
         save_as_json(f"{self.path}/sessions.json", content=self.sessions)
 
-    def warn(self, message:str, method:Optional[str] = 'generic', ip:Optional[str] = '127.0.1.1', port:Optional[int] = 0):
+    def warn(self, message:str, method:str, ip:str, src_port:int, dst_port:int):
         """
         used to replace the `.warn()`-Function implemented by the standard logger.
         :param message: logmessage you want to log
         :type message: str
-        :param method: the method or function or class you want to specify to clarify where the error occured. optional, defaults to `generic`
-        :type method: Optional[str]
-        :param ip: Optional var. to specify the source ip if you have one defaults to `'127.0.1.1'`
-        :type ip: Optional[str]
-        :param port: Optional var. to specify the port if you have one defaults to `0`
-        :type port: Optional[int]
+        :param method: the method or function or class you want to specify to clarify where the message occured.
+        :type method: str
+        :param ip: specify the source ip
+        :type ip: str
+        :param src_port: specify the source port
+        :type src_port: int
+        :param dst_port: specify the destination port
+        :type dst_port: int
         """
 
-        self.log(eventid=f'sofah_pot.{method}.warn', content={"message": message}, ip=ip, port=port)
+        self.log(eventid=f'sofah_pot.{method}.warn', content={"message": message}, ip=ip, src_port=src_port, dst_port=dst_port)
 
     
-    def info(self, message:str, method:Optional[str] = 'generic', ip:Optional[str] = '127.0.1.1', port:Optional[int] = 0):
+    def info(self, message:str, method:str, ip:str, src_port:int, dst_port:int):
         """
         used to replace the `.info()`-Function implemented by the standard logger.
         :param message: logmessage you want to log
         :type message: str
-        :param method: the method or function or class you want to specify to clarify where the error occured. optional, defaults to `generic`
-        :type method: Optional[str]
-        :param ip: Optional var. to specify the source ip if you have one defaults to `'127.0.1.1'`
-        :type ip: Optional[str]
-        :param port: Optional var. to specify the port if you have one defaults to `0`
-        :type port: Optional[int]
+        :param method: the method or function or class you want to specify to clarify where the message occured.
+        :type method: str
+        :param ip: specify the source ip
+        :type ip: str
+        :param src_port: specify the source port
+        :type src_port: int
+        :param dst_port: specify the destination port
+        :type dst_port: int
         """
 
-        self.log(eventid=f'sofah.{method}.info', content={"message": message}, ip=ip, port=port)
+        self.log(eventid=f'sofah_pot.{method}.info', content={"message": message}, ip=ip, src_port=src_port, dst_port=dst_port)
 
 
-    def error(self, message:str, method:Optional[str] = 'generic', ip:Optional[str] = '127.0.0.1', port:Optional[int] = ''):
+    def error(self, message:str, method:str, ip:str, src_port:int, dst_port:int):
         """
         used to replace the `.error()`-Function implemented by the standard logger.
         :param message: logmessage you want to log
         :type message: str
-        :param method: the method or function or class you want to specify to clarify where the error occured. optional, defaults to `generic`
-        :type method: Optional[str]
-        :param ip: Optional var. to specify the source ip if you have one defaults to `'127.0.0.1'`
-        :type ip: Optional[str]
-        :param port: Optional var. to specify the port if you have one defaults to `''`
-        :type port: Optional[int]
+        :param method: the method or function or class you want to specify to clarify where the message occured.
+        :type method: str
+        :param ip: specify the source ip
+        :type ip: str
+        :param src_port: specify the source port
+        :type src_port: int
+        :param dst_port: specify the destination port
+        :type dst_port: int
         """
 
-        self.log(eventid=f'sofah.{method}.error', content={"message": message}, ip=ip, port=port)
+        self.log(eventid=f'sofah_pot.{method}.error', content={"message": message}, ip=ip, src_port=src_port, dst_port=dst_port)
 
 
     def get_formatted_timestamp(self)->str:
