@@ -12,6 +12,7 @@ COPY ./src /home/api/
 RUN apk --no-cache -U add \
     python3 \
     py3-pip \
+    curl \
     python3-dev && \
     addgroup -g 2000 api && \
     adduser -S -s /bin/ash -u 2000 -D -g 2000 api && \
