@@ -1,8 +1,42 @@
-from sofahutils import load_var_from_config_and_validate, save_as_json, load_json_file_to_dict, get_own_ip
-import configparser, time, hashlib, pytz, json
+from sofahutils import load_var_from_config_and_validate, get_own_ip
+import configparser, time, hashlib, pytz, json, os, threading
 from datetime import datetime
 from typing import Optional
-from sofahutils import PathIsNoFileException
+
+# Rotate the event log once it grows past this many bytes.
+MAX_LOG_BYTES = 50 * 1024 * 1024
+# Drop session ids we haven't seen for this long. The hour-bucketed hash can only
+# ever match within the current + previous hour, so anything older is dead weight.
+SESSION_TTL_SECONDS = 24 * 3600
+
+
+def read_log_events(path:str) -> list:
+    """
+    Read a JSON-lines event log, tolerating a truncated/partial final line (the process
+    may have been killed mid-write) and any other malformed line. A shipper should use this.
+
+    :param path: path to the JSON-lines log file
+    :type path: str
+    :return: list of parsed event dicts
+    :rtype: list
+    """
+
+    events = []
+    try:
+        with open(path) as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return events
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue  # skip a truncated trailing line or any corrupt line
+    return events
+
 
 class JsonLogger:
     """
@@ -15,11 +49,66 @@ class JsonLogger:
         :param config: config
         :type config: configparser.ConfigParser
         """
-        
-        self.path = load_var_from_config_and_validate(config=config, section='Paths', option='logging_folder_path')
-        self.sessions = []
-        self.dst_ip = get_own_ip(api_list=json.loads(load_var_from_config_and_validate(config=config, section='Utils', option='api_list')), logger=None)
 
+        self.path = load_var_from_config_and_validate(config=config, section='Paths', option='logging_folder_path')
+        self.dst_ip = get_own_ip(api_list=json.loads(load_var_from_config_and_validate(config=config, section='Utils', option='api_list')), logger=None)
+        self._sessions_path = f"{self.path}/sessions.json"
+        self._log_path = f"{self.path}/sofah_log.json"
+        # waitress is multi-threaded; serialise the session mutation + file writes so concurrent
+        # events from different sources can't clobber each other (read-modify-write race).
+        self._lock = threading.Lock()
+        # The session set is held in memory ({session_id: last_seen_epoch}) and flushed
+        # atomically, instead of re-reading + rewriting the whole file on every event.
+        self.sessions = self._load_sessions()
+
+
+    def _load_sessions(self) -> dict:
+        """
+        Load sessions.json into a ``{session_id: last_seen_epoch}`` dict, tolerating a
+        missing/corrupt file and migrating the legacy list format (``[hash, ...]``).
+        """
+
+        try:
+            with open(self._sessions_path) as f:
+                data = json.loads(f.read())
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+        now = int(time.time())
+        if isinstance(data, list):
+            return {key: now for key in data}
+        if isinstance(data, dict):
+            return data
+        return {}
+
+
+    def _prune_sessions(self, now:int) -> None:
+        """Drop session ids not seen within SESSION_TTL_SECONDS so the set can't grow forever."""
+
+        cutoff = now - SESSION_TTL_SECONDS
+        for key in [k for k, seen in self.sessions.items() if seen < cutoff]:
+            del self.sessions[key]
+
+
+    def _maybe_rotate(self) -> None:
+        """Rotate the event log to a timestamped file once it passes MAX_LOG_BYTES."""
+
+        try:
+            if os.path.getsize(self._log_path) >= MAX_LOG_BYTES:
+                # microsecond precision so back-to-back rotations never overwrite each other
+                stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+                os.replace(self._log_path, f"{self.path}/sofah_log-{stamp}.json")
+        except FileNotFoundError:
+            pass
+
+
+    def _atomic_write_json(self, path:str, obj) -> None:
+        """Write JSON to ``path`` atomically (temp file in the same dir + os.replace)."""
+
+        tmp = f"{path}.tmp.{os.getpid()}"
+        with open(tmp, 'w') as f:
+            json.dump(obj, f)
+        os.replace(tmp, path)
 
 
     def log(self, eventid:str, content:dict, ip:str, src_port:int, dst_port:int):
@@ -36,36 +125,29 @@ class JsonLogger:
         :param dst_port: destination port
         :type dst_port: int
         """
-        
-        try:
-            self.sessions = load_json_file_to_dict(path=f"{self.path}/sessions.json")
-        except PathIsNoFileException:
-            self.sessions = []
-        except json.decoder.JSONDecodeError:
-            self.sessions = []
-
-        if type(self.sessions) != list:
-            self.sessions = []
-
-        key = self.check_if_event_exists(ip)
-        if key == None:
-            key = self.generate_session_id(ip=ip)
-
-        if key not in self.sessions:
-            self.sessions.append(key)
 
         content['src_ip'] = ip
-        content['session'] = key
         content['timestamp'] = self.get_formatted_timestamp()
         content['eventid'] = eventid
         content['src_port'] = src_port
         content['dst_ip'] = self.dst_ip
         content['dst_port'] = dst_port
 
-        filename = "sofah_log"
-        
-        save_as_json(f"{self.path}/{filename}.json", content=content, mode='a', newline=True)
-        save_as_json(f"{self.path}/sessions.json", content=self.sessions)
+        with self._lock:
+            key = self.check_if_event_exists(ip)
+            if key == None:
+                key = self.generate_session_id(ip=ip)
+
+            now = int(time.time())
+            self.sessions[key] = now
+            self._prune_sessions(now)
+
+            content['session'] = key
+
+            self._maybe_rotate()
+            with open(self._log_path, 'a') as logfile:
+                logfile.write(json.dumps(content) + "\n")
+            self._atomic_write_json(self._sessions_path, self.sessions)
 
     def warn(self, message:str, method:str, ip:str, src_port:int, dst_port:int):
         """
@@ -84,7 +166,7 @@ class JsonLogger:
 
         self.log(eventid=f'sofah_pot.{method}.warn', content={"message": message}, ip=ip, src_port=src_port, dst_port=dst_port)
 
-    
+
     def info(self, message:str, method:str, ip:str, src_port:int, dst_port:int):
         """
         used to replace the `.info()`-Function implemented by the standard logger.
@@ -129,7 +211,7 @@ class JsonLogger:
 
         timezone = pytz.timezone('Europe/Berlin')
         dt = datetime.now(timezone)
-        
+
         return dt.strftime('%Y-%m-%d %H:%M:%S %z')
 
     def check_if_event_exists(self, ip:str)->Optional[str]:
@@ -141,7 +223,7 @@ class JsonLogger:
         """
 
         final_key = None
-        
+
         for key in self.sessions:
             if self.validate_hash_func(ip=ip, hash=key):
                 final_key = key
@@ -166,7 +248,7 @@ class JsonLogger:
         session_id = hashlib.sha1(string_to_be_hashed, usedforsecurity=False).hexdigest()[:16]
 
         return session_id
-    
+
     def validate_hash_func(self, ip:str, hash:str)->bool:
         """
         Method to check validity of hash.
@@ -176,5 +258,5 @@ class JsonLogger:
         :type hash: str
         :return: bool indicating the validity
         """
-        
+
         return self.generate_session_id(ip=ip) == hash or self.generate_session_id(ip=ip, h_minus=1) == hash
