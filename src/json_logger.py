@@ -111,7 +111,7 @@ class JsonLogger:
         os.replace(tmp, path)
 
 
-    def log(self, eventid:str, content:dict, ip:str, src_port:int, dst_port:int):
+    def log(self, eventid:str, content:dict, ip:str, src_port:int, dst_port:int, session:Optional[str] = None):
         """
         This method is for logging an event.
         :param eventid: The id of the event should look like `sofah.honeypot.static_endpoint`
@@ -124,6 +124,9 @@ class JsonLogger:
         :type src_port: int
         :param dst_port: destination port
         :type dst_port: int
+        :param session: Optional pot-owned session id; when given it is recorded verbatim instead
+            of deriving one from the source ip + hour bucket.
+        :type session: Optional[str]
         """
 
         content['src_ip'] = ip
@@ -134,9 +137,12 @@ class JsonLogger:
         content['dst_port'] = dst_port
 
         with self._lock:
-            key = self.check_if_event_exists(ip)
-            if key == None:
-                key = self.generate_session_id(ip=ip)
+            if session:
+                key = session  # pot owns the session id -> record it verbatim
+            else:
+                key = self.check_if_event_exists(ip)
+                if key == None:
+                    key = self.generate_session_id(ip=ip)
 
             now = int(time.time())
             self.sessions[key] = now

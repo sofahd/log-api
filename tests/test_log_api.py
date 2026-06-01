@@ -20,8 +20,8 @@ class _StubLogger:
     def __init__(self, config):
         self.logged = []
 
-    def log(self, eventid, content, ip, src_port, dst_port):
-        self.logged.append(content)
+    def log(self, eventid, content, ip, src_port, dst_port, session=None):
+        self.logged.append({"content": content, "session": session, "ip": ip})
 
     def info(self, *a, **k):
         pass
@@ -77,3 +77,32 @@ def test_malformed_json_rejected(client):
 
 def test_health_ok(client):
     assert client.get("/health").status_code == 200
+
+
+def test_pot_owned_session_is_passed_through(client):
+    log_api.logger.logged.clear()
+    r = client.post("/log", data={**BASE, "content": '{"x":1}', "session": "conn-uuid-42"})
+    assert r.status_code == 200
+    assert log_api.logger.logged[-1]["session"] == "conn-uuid-42"
+
+
+def test_missing_session_passes_none(client):
+    log_api.logger.logged.clear()
+    r = client.post("/log", data={**BASE, "content": '{"x":1}'})
+    assert r.status_code == 200
+    assert log_api.logger.logged[-1]["session"] is None
+
+
+def test_per_source_rate_limit_sheds_excess(client, monkeypatch):
+    monkeypatch.setattr(log_api, "RATE_LIMIT_MAX", 3)
+    monkeypatch.setattr(log_api, "RATE_LIMIT_WINDOW", 60)
+    log_api._rate_history.clear()
+
+    def post(ip):
+        return client.post("/log", data={"eventid": "e", "content": "{}", "ip": ip,
+                                          "src_port": "1", "dst_port": "2"}).get_json()["status"]
+
+    flooder = [post("203.0.113.7") for _ in range(5)]
+    assert flooder == ["success", "success", "success", "throttled", "throttled"]
+    # a different source is unaffected by the flooder's limit
+    assert post("203.0.113.8") == "success"

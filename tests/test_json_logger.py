@@ -96,3 +96,12 @@ def test_corrupt_or_missing_sessions_file_recovers(tmp_path):
     (tmp_path / "sessions.json").write_text("{ this is not json")
     logger = make_logger(tmp_path)  # must not raise
     assert logger.sessions == {}
+
+
+def test_pot_owned_session_recorded_verbatim(tmp_path):
+    logger = make_logger(tmp_path)
+    logger.log("test.event", {}, ip="1.2.3.4", src_port=1, dst_port=2, session="conn-uuid-99")
+    events = read_log_events(str(tmp_path / "sofah_log.json"))
+    assert events[-1]["session"] == "conn-uuid-99"   # verbatim, not the ip+hour hash
+    assert "conn-uuid-99" in logger.sessions
+
