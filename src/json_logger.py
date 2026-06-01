@@ -163,7 +163,7 @@ class JsonLogger:
 
         string_to_be_hashed = f"{hour_timestamp}{ip}".encode()
 
-        session_id = hashlib.sha1(string_to_be_hashed).hexdigest()[:16]
+        session_id = hashlib.sha1(string_to_be_hashed, usedforsecurity=False).hexdigest()[:16]
 
         return session_id
     
