@@ -4,6 +4,8 @@ from utils.utils import load_config
 import json
 
 app = Flask(__name__)
+# Cap request bodies so a flooded or abused pot on log_net cannot bloat the log writer.
+app.config['MAX_CONTENT_LENGTH'] = 256 * 1024
 config = load_config(path='/home/api/config.ini')
 logger = JsonLogger(config=config)
 def_answer = {
@@ -45,6 +47,12 @@ def log():
         resp_dict['status'] = 'error'
         resp_dict['message'] = f"Error during jsonification of content, content has to be a dict!: {e}"
         return resp_dict, 400
+
+    if not isinstance(content_dict, dict):
+        resp_dict['status'] = 'error'
+        resp_dict['message'] = "Error: content has to be a JSON object"
+        return resp_dict, 400
+
     try:
         logger.log(eventid=request.form.get('eventid'), content=content_dict, ip=request.form.get("ip"), src_port=request.form.get("src_port"), dst_port=request.form.get("dst_port"))
     except Exception as e:
