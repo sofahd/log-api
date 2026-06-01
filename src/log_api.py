@@ -1,6 +1,6 @@
 from flask import Flask, request
 from json_logger import JsonLogger
-from utils.utils import load_config
+from sofahutils import load_config
 import json
 
 app = Flask(__name__)

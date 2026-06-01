@@ -1,8 +1,8 @@
-from utils.utils import load_var_from_config_and_validate, save_as_json, load_json_file_to_dict, get_own_ip
+from sofahutils import load_var_from_config_and_validate, save_as_json, load_json_file_to_dict, get_own_ip
 import configparser, time, hashlib, pytz, json
 from datetime import datetime
 from typing import Optional
-from utils.exceptions import PathIsNoFileException
+from sofahutils import PathIsNoFileException
 
 class JsonLogger:
     """
@@ -18,7 +18,7 @@ class JsonLogger:
         
         self.path = load_var_from_config_and_validate(config=config, section='Paths', option='logging_folder_path')
         self.sessions = []
-        self.dst_ip = get_own_ip(config=config)
+        self.dst_ip = get_own_ip(api_list=json.loads(load_var_from_config_and_validate(config=config, section='Utils', option='api_list')), logger=None)
 
 
 
