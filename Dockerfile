@@ -22,7 +22,8 @@ RUN apk --no-cache -U add \
     waitress \
     requests \
     cryptography \
-    pytz && \
+    pytz \
+    git+https://github.com/sofahd/sofahutils.git && \
     cd /home/api && \
     mkdir log_data && \
     chown api:api -R /home/api/* 
